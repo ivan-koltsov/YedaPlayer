@@ -213,8 +213,7 @@ export function YedaVideoPlayer({ input }: Props) {
     () => chapters.reduce((a, c) => a + (c.end - c.start), 0),
     [chapters],
   );
-  const remainderRatio =
-    videoLength > 0 ? (videoLength - chapterSpan) / videoLength : 0;
+  const remainderDuration = Math.max(0, videoLength - chapterSpan);
 
   useEffect(() => {
     if (!qualityOpen) return;
@@ -230,7 +229,9 @@ export function YedaVideoPlayer({ input }: Props) {
   return (
     <div ref={shellRef} className={styles.root}>
       <div className={styles.inner}>
-        <div className={styles.videoWrap}>
+        <div
+          className={`${styles.videoWrap} ${!playing ? styles.videoWrapPaused : ""}`}
+        >
           <video
             ref={videoRef}
             className={styles.video}
@@ -255,6 +256,76 @@ export function YedaVideoPlayer({ input }: Props) {
           ) : null}
 
           <div className={styles.overlayBottom}>
+            <div className={styles.trackWrap}>
+              <div
+                ref={trackRef}
+                className={styles.track}
+                role="slider"
+                tabIndex={0}
+                aria-valuemin={0}
+                aria-valuemax={Math.round(effectiveDuration)}
+                aria-valuenow={Math.round(currentTime)}
+                aria-label="Seek timeline"
+                onMouseMove={onTrackMove}
+                onMouseLeave={onTrackLeave}
+                onClick={onTrackClick}
+                onKeyDown={(e) => {
+                  const step = 5;
+                  if (e.key === "ArrowRight") {
+                    seekTo(currentTime + step);
+                  } else if (e.key === "ArrowLeft") {
+                    seekTo(currentTime - step);
+                  }
+                }}
+              >
+                <div className={styles.chapterSegments}>
+                  {chapters.map((c) => (
+                    <div
+                      key={c.title + c.start}
+                      className={styles.segment}
+                      style={{
+                        flex: `${c.end - c.start} 1 0`,
+                        minWidth: 0,
+                      }}
+                    />
+                  ))}
+                  {remainderDuration > 0.001 ? (
+                    <div
+                      className={`${styles.segment} ${styles.segmentRemainder}`}
+                      style={{
+                        flex: `${remainderDuration} 1 0`,
+                        minWidth: 0,
+                      }}
+                    />
+                  ) : null}
+                </div>
+                <div
+                  className={styles.played}
+                  style={{ width: `${playedPct}%` }}
+                />
+                <div
+                  className={styles.scrubHead}
+                  style={{ left: `${playedPct}%` }}
+                />
+                <div
+                  className={`${styles.hoverLine} ${hover.active ? styles.visible : ""}`}
+                  style={{ left: `${hoverLineLeftPct}%` }}
+                />
+
+                <div
+                  className={`${styles.tooltip} ${hover.active ? styles.visible : ""}`}
+                  style={{ left: `${hoverLineLeftPct}%` }}
+                >
+                  <div className={styles.tooltipTime}>
+                    {formatTime(hover.time)}
+                  </div>
+                  <div className={styles.tooltipChapter}>
+                    {hoverChapter?.title ?? "Between chapters"}
+                  </div>
+                </div>
+              </div>
+            </div>
+
             <div className={styles.controls}>
               <button
                 type="button"
@@ -306,26 +377,29 @@ export function YedaVideoPlayer({ input }: Props) {
                 />
               </div>
 
+              <span className={styles.timeReadout}>
+                <strong>{formatTime(currentTime)}</strong>
+                {" / "}
+                {formatTime(effectiveDuration)}
+              </span>
+
               <div className={styles.spacer} />
 
               <div ref={qualityWrapRef} className={styles.qualityWrap}>
                 <button
                   type="button"
-                  className={styles.qualityBtn}
+                  className={styles.gearBtn}
                   onClick={() => setQualityOpen((o) => !o)}
                   aria-expanded={qualityOpen}
                   aria-haspopup="listbox"
+                  aria-label={`Quality: ${qualityLabel}`}
+                  title={qualityLabel}
                 >
-                  {qualityLabel}
-                  <svg
-                    className={styles.qualityChevron}
-                    viewBox="0 0 24 24"
-                    fill="currentColor"
-                  >
-                    <path d="M7 10l5 5 5-5z" />
+                  <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+                    <path d="M19.14 12.94c.04-.31.06-.63.06-.94 0-.31-.02-.63-.06-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.04.31-.06.63-.06.94s.02.63.06.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.48-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z" />
                   </svg>
                 </button>
-                {qualityOpen && levels.length > 0 ? (
+                {qualityOpen ? (
                   <div className={styles.qualityMenu} role="listbox">
                     <button
                       type="button"
@@ -367,109 +441,6 @@ export function YedaVideoPlayer({ input }: Props) {
                 </svg>
               </button>
             </div>
-          </div>
-        </div>
-
-        <div className={styles.timelineSection}>
-          <div className={styles.timelineLabelRow}>
-            <span className={styles.timelineHeading}>Chapters</span>
-            <span className={styles.timeReadout}>
-              <strong>{formatTime(currentTime)}</strong>
-              {" / "}
-              {formatTime(effectiveDuration)}
-            </span>
-          </div>
-
-          <div className={styles.trackWrap}>
-            <div
-              ref={trackRef}
-              className={styles.track}
-              role="slider"
-              tabIndex={0}
-              aria-valuemin={0}
-              aria-valuemax={Math.round(effectiveDuration)}
-              aria-valuenow={Math.round(currentTime)}
-              aria-label="Seek timeline"
-              onMouseMove={onTrackMove}
-              onMouseLeave={onTrackLeave}
-              onClick={onTrackClick}
-              onKeyDown={(e) => {
-                const step = 5;
-                if (e.key === "ArrowRight") {
-                  seekTo(currentTime + step);
-                } else if (e.key === "ArrowLeft") {
-                  seekTo(currentTime - step);
-                }
-              }}
-            >
-              <div className={styles.chapterSegments}>
-                {chapters.map((c) => {
-                  const w = ((c.end - c.start) / videoLength) * 100;
-                  return (
-                    <div
-                      key={c.title + c.start}
-                      className={styles.segment}
-                      style={{ flex: `0 0 ${w}%` }}
-                    >
-                      <div className={styles.segmentInner} />
-                    </div>
-                  );
-                })}
-                {remainderRatio > 0.001 ? (
-                  <div
-                    className={`${styles.segment} ${styles.segmentRemainder}`}
-                    style={{ flex: `0 0 ${remainderRatio * 100}%` }}
-                  />
-                ) : null}
-              </div>
-              <div
-                className={styles.played}
-                style={{ width: `${playedPct}%` }}
-              />
-              <div
-                className={styles.scrubHead}
-                style={{ left: `${playedPct}%` }}
-              />
-              <div
-                className={`${styles.hoverLine} ${hover.active ? styles.visible : ""}`}
-                style={{ left: `${hoverLineLeftPct}%` }}
-              />
-
-              <div
-                className={`${styles.tooltip} ${hover.active ? styles.visible : ""}`}
-                style={{ left: `${hoverLineLeftPct}%` }}
-              >
-                <div className={styles.tooltipTime}>
-                  {formatTime(hover.time)}
-                </div>
-                <div className={styles.tooltipChapter}>
-                  {hoverChapter?.title ?? "Between chapters"}
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div className={styles.chapterStripLabels}>
-            {chapters.map((c) => {
-              const w = ((c.end - c.start) / videoLength) * 100;
-              return (
-                <div
-                  key={`lbl-${c.title}-${c.start}`}
-                  className={styles.chapterChip}
-                  style={{ flex: `0 0 ${w}%` }}
-                  title={c.title}
-                >
-                  {c.title}
-                </div>
-              );
-            })}
-            {remainderRatio > 0.001 ? (
-              <div
-                className={styles.chapterChip}
-                style={{ flex: `0 0 ${remainderRatio * 100}%` }}
-                title="Between chapters"
-              />
-            ) : null}
           </div>
         </div>
       </div>
