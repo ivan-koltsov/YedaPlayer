@@ -402,6 +402,73 @@
   font-weight: 600;
 }
 
+/* Full-screen ad slot after chapter ends */
+.adOverlay {
+  position: absolute;
+  inset: 0;
+  z-index: 6;
+  display: flex;
+  flex-direction: column;
+  background: #000;
+  overflow: hidden;
+}
+
+.adVideo {
+  flex: 1;
+  width: 100%;
+  min-height: 0;
+  object-fit: contain;
+  background: #000;
+}
+
+.adPlaceholder {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  text-align: center;
+  min-height: 0;
+}
+
+.adPlaceholderBrand {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.65);
+  margin-bottom: 12px;
+}
+
+.adPlaceholderHeadline {
+  margin: 0;
+  max-width: 22em;
+  font-size: 1.25rem;
+  font-weight: 600;
+  line-height: 1.35;
+  color: #fff;
+}
+
+.adChrome {
+  position: absolute;
+  bottom: 14px;
+  left: 14px;
+  pointer-events: none;
+}
+
+.adBadge {
+  display: inline-block;
+  padding: 6px 10px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: #fff;
+  background: rgba(0, 0, 0, 0.55);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+}
+
 @media (max-width: 560px) {
   .controlsLeft {
     gap: 6px;

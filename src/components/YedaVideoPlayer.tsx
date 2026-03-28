@@ -8,6 +8,13 @@ import {
 import Hls from "hls.js";
 import type { YedaPlayerInput } from "../types";
 import {
+  AD_DURATION_SEC,
+  AD_PLACEHOLDER_HEADLINES,
+  pickRandom,
+  resumeTimeAfterChapterAd,
+  shouldSkipAdAtChapterEnd,
+} from "../utils/ads";
+import {
   chapterAtTime,
   formatTime,
   segmentIndexFromTrackRatio,
@@ -30,12 +37,24 @@ function timeFromClientX(
 }
 
 export function YedaVideoPlayer({ input }: Props) {
-  const { hlsPlaylistUrl, videoLength, chapters } = input;
+  const {
+    hlsPlaylistUrl,
+    videoLength,
+    chapters,
+    adVideoUrls = [],
+    adDurationSec = AD_DURATION_SEC,
+  } = input;
   const videoRef = useRef<HTMLVideoElement>(null);
+  const adVideoRef = useRef<HTMLVideoElement>(null);
   const trackRef = useRef<HTMLDivElement>(null);
   const shellRef = useRef<HTMLDivElement>(null);
   const qualityWrapRef = useRef<HTMLDivElement>(null);
   const hlsRef = useRef<Hls | null>(null);
+  const prevTimeRef = useRef(0);
+  const firedChapterAdsRef = useRef<Set<number>>(new Set());
+  const adActiveRef = useRef(false);
+  const adChapterIndexRef = useRef(0);
+  const endAdRef = useRef<() => void>(() => {});
 
   const [playing, setPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
@@ -55,6 +74,12 @@ export function YedaVideoPlayer({ input }: Props) {
     ratio: number;
   }>({ active: false, time: 0, ratio: 0 });
 
+  const [adActive, setAdActive] = useState(false);
+  const [adRemainingSec, setAdRemainingSec] = useState(adDurationSec);
+  const [adMediaUrl, setAdMediaUrl] = useState<string | null>(null);
+  const [adHeadline, setAdHeadline] = useState("");
+  const [adHue, setAdHue] = useState(210);
+
   const effectiveDuration = useMemo(() => {
     const d = duration;
     return Number.isFinite(d) && d > 0 ? d : videoLength;
@@ -64,6 +89,15 @@ export function YedaVideoPlayer({ input }: Props) {
     effectiveDuration > 0
       ? clamp((currentTime / effectiveDuration) * 100, 0, 100)
       : 0;
+
+  useEffect(() => {
+    firedChapterAdsRef.current.clear();
+    prevTimeRef.current = 0;
+  }, [hlsPlaylistUrl]);
+
+  useEffect(() => {
+    adActiveRef.current = adActive;
+  }, [adActive]);
 
   useEffect(() => {
     const video = videoRef.current;
@@ -98,10 +132,89 @@ export function YedaVideoPlayer({ input }: Props) {
     }
   }, [hlsPlaylistUrl]);
 
+  const endAd = useCallback(() => {
+    if (!adActiveRef.current) return;
+    adActiveRef.current = false;
+    const video = videoRef.current;
+    const adVideo = adVideoRef.current;
+    if (adVideo) {
+      adVideo.pause();
+      adVideo.removeAttribute("src");
+      adVideo.load();
+    }
+    setAdActive(false);
+    setAdMediaUrl(null);
+    if (!video) return;
+    const resume = resumeTimeAfterChapterAd(
+      chapters,
+      adChapterIndexRef.current,
+      Number.isFinite(video.duration) && video.duration > 0
+        ? video.duration
+        : videoLength,
+    );
+    video.currentTime = resume;
+    prevTimeRef.current = resume;
+    setCurrentTime(resume);
+    void video.play();
+  }, [chapters, videoLength]);
+
+  useEffect(() => {
+    endAdRef.current = endAd;
+  }, [endAd]);
+
+  const startAdChapter = useCallback(
+    (chapterIndex: number) => {
+      const video = videoRef.current;
+      if (!video) return;
+      video.pause();
+      const end = chapters[chapterIndex]!.end;
+      video.currentTime = end;
+      prevTimeRef.current = end;
+      setCurrentTime(end);
+      adChapterIndexRef.current = chapterIndex;
+      adActiveRef.current = true;
+      setAdActive(true);
+      setAdMediaUrl(
+        adVideoUrls.length > 0 ? pickRandom(adVideoUrls) : null,
+      );
+      setAdHeadline(pickRandom(AD_PLACEHOLDER_HEADLINES));
+      setAdHue(Math.floor(Math.random() * 360));
+      setAdRemainingSec(adDurationSec);
+    },
+    [chapters, adVideoUrls, adDurationSec],
+  );
+
   useEffect(() => {
     const video = videoRef.current;
     if (!video) return;
-    const onTime = () => setCurrentTime(video.currentTime);
+    const onTime = () => {
+      const t = video.currentTime;
+      const prev = prevTimeRef.current;
+      const dur =
+        Number.isFinite(video.duration) && video.duration > 0
+          ? video.duration
+          : videoLength;
+
+      if (!adActiveRef.current) {
+        for (let i = 0; i < chapters.length; i++) {
+          if (shouldSkipAdAtChapterEnd(chapters[i]!, i, chapters.length, dur)) {
+            continue;
+          }
+          if (firedChapterAdsRef.current.has(i)) continue;
+          const end = chapters[i]!.end;
+          if (prev < end && t >= end) {
+            firedChapterAdsRef.current.add(i);
+            startAdChapter(i);
+            prevTimeRef.current = end;
+            setCurrentTime(end);
+            return;
+          }
+        }
+      }
+
+      prevTimeRef.current = t;
+      setCurrentTime(t);
+    };
     const onDur = () => {
       if (Number.isFinite(video.duration) && video.duration > 0) {
         setDuration(video.duration);
@@ -121,7 +234,32 @@ export function YedaVideoPlayer({ input }: Props) {
       video.removeEventListener("play", onPlay);
       video.removeEventListener("pause", onPause);
     };
-  }, []);
+  }, [chapters, videoLength, startAdChapter]);
+
+  useEffect(() => {
+    if (!adActive) return;
+    const deadline = Date.now() + adDurationSec * 1000;
+    const id = window.setInterval(() => {
+      const left = Math.max(0, Math.ceil((deadline - Date.now()) / 1000));
+      setAdRemainingSec(left);
+      if (left <= 0) {
+        window.clearInterval(id);
+        endAdRef.current();
+      }
+    }, 200);
+    return () => window.clearInterval(id);
+  }, [adActive, adDurationSec]);
+
+  useEffect(() => {
+    if (!adActive || !adMediaUrl) return;
+    const v = adVideoRef.current;
+    if (!v) return;
+    v.volume = volume;
+    v.muted = muted;
+    v.loop = true;
+    v.currentTime = 0;
+    void v.play();
+  }, [adActive, adMediaUrl, volume, muted]);
 
   useEffect(() => {
     const video = videoRef.current;
@@ -132,12 +270,14 @@ export function YedaVideoPlayer({ input }: Props) {
 
   const seekTo = useCallback(
     (t: number) => {
+      if (adActiveRef.current) return;
       const video = videoRef.current;
       if (!video) return;
       const max = Number.isFinite(video.duration) && video.duration > 0
         ? video.duration
         : videoLength;
       video.currentTime = clamp(t, 0, max);
+      prevTimeRef.current = video.currentTime;
     },
     [videoLength],
   );
@@ -197,11 +337,19 @@ export function YedaVideoPlayer({ input }: Props) {
   }, [levels, qualityIndex]);
 
   const togglePlay = useCallback(() => {
+    if (adActiveRef.current) {
+      const av = adVideoRef.current;
+      if (av && adMediaUrl) {
+        if (av.paused) void av.play();
+        else av.pause();
+      }
+      return;
+    }
     const video = videoRef.current;
     if (!video) return;
     if (video.paused) void video.play();
     else video.pause();
-  }, []);
+  }, [adMediaUrl]);
 
   const toggleFs = useCallback(() => {
     const shell = shellRef.current;
@@ -257,7 +405,7 @@ export function YedaVideoPlayer({ input }: Props) {
     <div ref={shellRef} className={styles.root}>
       <div className={styles.inner}>
         <div
-          className={`${styles.videoWrap} ${!playing ? styles.videoWrapPaused : ""}`}
+          className={`${styles.videoWrap} ${!playing && !adActive ? styles.videoWrapPaused : ""}`}
         >
           <video
             ref={videoRef}
@@ -266,7 +414,37 @@ export function YedaVideoPlayer({ input }: Props) {
             onClick={togglePlay}
           />
 
-          {!playing ? (
+          {adActive ? (
+            <div className={styles.adOverlay} role="dialog" aria-live="polite">
+              {adMediaUrl ? (
+                <video
+                  key={adMediaUrl}
+                  ref={adVideoRef}
+                  className={styles.adVideo}
+                  src={adMediaUrl}
+                  playsInline
+                  muted={muted}
+                />
+              ) : (
+                <div
+                  className={styles.adPlaceholder}
+                  style={{
+                    background: `linear-gradient(135deg, hsl(${adHue}, 42%, 28%) 0%, hsl(${(adHue + 40) % 360}, 38%, 18%) 100%)`,
+                  }}
+                >
+                  <span className={styles.adPlaceholderBrand}>Sponsored</span>
+                  <p className={styles.adPlaceholderHeadline}>{adHeadline}</p>
+                </div>
+              )}
+              <div className={styles.adChrome}>
+                <span className={styles.adBadge}>
+                  Ad · {adRemainingSec}s
+                </span>
+              </div>
+            </div>
+          ) : null}
+
+          {!playing && !adActive ? (
             <button
               type="button"
               className={styles.centerPlay}
@@ -282,6 +460,7 @@ export function YedaVideoPlayer({ input }: Props) {
             </button>
           ) : null}
 
+          {!adActive ? (
           <div className={styles.overlayBottom}>
             <div className={styles.trackWrap}>
               <div
@@ -467,6 +646,7 @@ export function YedaVideoPlayer({ input }: Props) {
               </button>
             </div>
           </div>
+          ) : null}
         </div>
       </div>
     </div>
