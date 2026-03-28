@@ -1,10 +1,15 @@
 import type { YedaPlayerInput } from "./types";
-
+import { AD_DURATION_SEC } from "./utils/ads";
 /** Corrected from assignment JSON (Benefits + Conclusion ranges). */
 export const DEMO_INPUT: YedaPlayerInput = {
   hlsPlaylistUrl:
     "https://vz-50e60d70-540.b-cdn.net/b87ac5f4-2cf0-42d1-acc8-32a89d3c71c7/playlist.m3u8",
   videoLength: 348,
+  adDurationSec: AD_DURATION_SEC,
+  adVideoUrls: [
+    "https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4",
+    "https://storage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4",
+  ],
   chapters: [
     { title: "Introduction & Course Overview", start: 0, end: 14 },
     {
