@@ -7,7 +7,11 @@ import {
 } from "react";
 import Hls from "hls.js";
 import type { YedaPlayerInput } from "../types";
-import { chapterAtTime, formatTime } from "../utils/time";
+import {
+  chapterAtTime,
+  formatTime,
+  segmentIndexFromTrackRatio,
+} from "../utils/time";
 import styles from "./YedaVideoPlayer.module.css";
 
 type Props = { input: YedaPlayerInput };
@@ -207,13 +211,36 @@ export function YedaVideoPlayer({ input }: Props) {
   }, []);
 
   const hoverChapter = chapterAtTime(hover.time, chapters);
-  const hoverLineLeftPct = hover.ratio * 100;
+  const tooltipLeftPct = hover.ratio * 100;
 
   const chapterSpan = useMemo(
     () => chapters.reduce((a, c) => a + (c.end - c.start), 0),
     [chapters],
   );
   const remainderDuration = Math.max(0, videoLength - chapterSpan);
+
+  const chapterDurations = useMemo(
+    () => chapters.map((c) => c.end - c.start),
+    [chapters],
+  );
+
+  const hoverSegmentIndex = useMemo(() => {
+    if (!hover.active) return -1;
+    return segmentIndexFromTrackRatio(
+      hover.ratio,
+      chapterDurations,
+      remainderDuration,
+    );
+  }, [hover.active, hover.ratio, chapterDurations, remainderDuration]);
+
+  const tooltipTitle = useMemo(() => {
+    if (!hover.active) return "";
+    if (hoverChapter) return hoverChapter.title;
+    if (hoverSegmentIndex >= 0 && hoverSegmentIndex < chapters.length) {
+      return chapters[hoverSegmentIndex]?.title ?? "";
+    }
+    return "Between chapters";
+  }, [hover.active, hoverChapter, hoverSegmentIndex, chapters]);
 
   useEffect(() => {
     if (!qualityOpen) return;
@@ -259,7 +286,7 @@ export function YedaVideoPlayer({ input }: Props) {
             <div className={styles.trackWrap}>
               <div
                 ref={trackRef}
-                className={styles.track}
+                className={styles.trackHit}
                 role="slider"
                 tabIndex={0}
                 aria-valuemin={0}
@@ -278,11 +305,12 @@ export function YedaVideoPlayer({ input }: Props) {
                   }
                 }}
               >
+                <div className={styles.trackLine}>
                 <div className={styles.chapterSegments}>
-                  {chapters.map((c) => (
+                  {chapters.map((c, i) => (
                     <div
                       key={c.title + c.start}
-                      className={styles.segment}
+                      className={`${styles.segment} ${hover.active && hoverSegmentIndex === i ? styles.segmentHovered : ""}`}
                       style={{
                         flex: `${c.end - c.start} 1 0`,
                         minWidth: 0,
@@ -291,7 +319,7 @@ export function YedaVideoPlayer({ input }: Props) {
                   ))}
                   {remainderDuration > 0.001 ? (
                     <div
-                      className={`${styles.segment} ${styles.segmentRemainder}`}
+                      className={`${styles.segment} ${styles.segmentRemainder} ${hover.active && hoverSegmentIndex === chapters.length ? styles.segmentHovered : ""}`}
                       style={{
                         flex: `${remainderDuration} 1 0`,
                         minWidth: 0,
@@ -307,81 +335,78 @@ export function YedaVideoPlayer({ input }: Props) {
                   className={styles.scrubHead}
                   style={{ left: `${playedPct}%` }}
                 />
-                <div
-                  className={`${styles.hoverLine} ${hover.active ? styles.visible : ""}`}
-                  style={{ left: `${hoverLineLeftPct}%` }}
-                />
 
                 <div
                   className={`${styles.tooltip} ${hover.active ? styles.visible : ""}`}
-                  style={{ left: `${hoverLineLeftPct}%` }}
+                  style={{ left: `${tooltipLeftPct}%` }}
                 >
+                  <div className={styles.tooltipTitle}>{tooltipTitle}</div>
                   <div className={styles.tooltipTime}>
                     {formatTime(hover.time)}
                   </div>
-                  <div className={styles.tooltipChapter}>
-                    {hoverChapter?.title ?? "Between chapters"}
-                  </div>
+                </div>
                 </div>
               </div>
             </div>
 
             <div className={styles.controls}>
-              <button
-                type="button"
-                className={styles.iconBtn}
-                onClick={togglePlay}
-                aria-label={playing ? "Pause" : "Play"}
-              >
-                {playing ? (
-                  <svg viewBox="0 0 24 24" fill="currentColor">
-                    <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z" />
-                  </svg>
-                ) : (
-                  <svg viewBox="0 0 24 24" fill="currentColor">
-                    <path d="M8 5v14l11-7z" />
-                  </svg>
-                )}
-              </button>
-
-              <div className={styles.volumeBlock}>
+              <div className={styles.controlsLeft}>
                 <button
                   type="button"
                   className={styles.iconBtn}
-                  onClick={() => setMuted((m) => !m)}
-                  aria-label={muted ? "Unmute" : "Mute"}
+                  onClick={togglePlay}
+                  aria-label={playing ? "Pause" : "Play"}
                 >
-                  {muted || volume === 0 ? (
-                    <svg viewBox="0 0 24 24" fill="currentColor">
-                      <path d="M16.5 12c0-1.77-1.02-3.29-2.5-4.03v2.21l2.45 2.45c.03-.2.05-.41.05-.63zm2.5 0c0 .94-.2 1.82-.54 2.64l1.51 1.51C20.63 14.91 21 13.5 21 12c0-4.28-2.99-7.86-7-8.77v2.06c2.89.86 5 3.54 5 6.71zM4.27 3L3 4.27 7.73 9H3v6h4l5 5v-6.73l4.25 4.25c-.67.52-1.42.93-2.25 1.18v2.06c1.38-.31 2.63-.95 3.69-1.81L19.73 21 21 19.73l-9-9L4.27 3zM12 4L9.91 6.09 12 8.18V4z" />
+                  {playing ? (
+                    <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+                      <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z" />
                     </svg>
                   ) : (
-                    <svg viewBox="0 0 24 24" fill="currentColor">
-                      <path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z" />
+                    <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+                      <path d="M8 5v14l11-7z" />
                     </svg>
                   )}
                 </button>
-                <input
-                  className={styles.volumeSlider}
-                  type="range"
-                  min={0}
-                  max={1}
-                  step={0.01}
-                  value={muted ? 0 : volume}
-                  onChange={(e) => {
-                    const v = Number(e.target.value);
-                    setVolume(v);
-                    if (v > 0) setMuted(false);
-                  }}
-                  aria-label="Volume"
-                />
-              </div>
 
-              <span className={styles.timeReadout}>
-                <strong>{formatTime(currentTime)}</strong>
-                {" / "}
-                {formatTime(effectiveDuration)}
-              </span>
+                <div className={styles.volumeBlock}>
+                  <button
+                    type="button"
+                    className={styles.iconBtn}
+                    onClick={() => setMuted((m) => !m)}
+                    aria-label={muted ? "Unmute" : "Mute"}
+                  >
+                    {muted || volume === 0 ? (
+                      <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+                        <path d="M16.5 12c0-1.77-1.02-3.29-2.5-4.03v2.21l2.45 2.45c.03-.2.05-.41.05-.63zm2.5 0c0 .94-.2 1.82-.54 2.64l1.51 1.51C20.63 14.91 21 13.5 21 12c0-4.28-2.99-7.86-7-8.77v2.06c2.89.86 5 3.54 5 6.71zM4.27 3L3 4.27 7.73 9H3v6h4l5 5v-6.73l4.25 4.25c-.67.52-1.42.93-2.25 1.18v2.06c1.38-.31 2.63-.95 3.69-1.81L19.73 21 21 19.73l-9-9L4.27 3zM12 4L9.91 6.09 12 8.18V4z" />
+                      </svg>
+                    ) : (
+                      <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+                        <path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z" />
+                      </svg>
+                    )}
+                  </button>
+                  <input
+                    className={styles.volumeSlider}
+                    type="range"
+                    min={0}
+                    max={1}
+                    step={0.01}
+                    value={muted ? 0 : volume}
+                    onChange={(e) => {
+                      const v = Number(e.target.value);
+                      setVolume(v);
+                      if (v > 0) setMuted(false);
+                    }}
+                    aria-label="Volume"
+                  />
+                </div>
+
+                <span className={styles.timeReadout}>
+                  {formatTime(currentTime)}
+                  {" / "}
+                  {formatTime(effectiveDuration)}
+                </span>
+              </div>
 
               <div className={styles.spacer} />
 

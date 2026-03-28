@@ -10,6 +10,32 @@ export function formatTime(totalSeconds: number): string {
   return `${m}:${sec.toString().padStart(2, "0")}`;
 }
 
+function clamp(n: number, min: number, max: number) {
+  return Math.min(Math.max(n, min), max);
+}
+
+/** Which visual segment (0..n-1) the pointer sits in, from horizontal position 0–1 on the track. */
+export function segmentIndexFromTrackRatio(
+  ratio: number,
+  chapterDurations: number[],
+  remainderDuration: number,
+): number {
+  const weights = [
+    ...chapterDurations,
+    ...(remainderDuration > 0.001 ? [remainderDuration] : []),
+  ];
+  const total = weights.reduce((a, b) => a + b, 0);
+  if (weights.length === 0 || total <= 0) return 0;
+  const r = clamp(ratio, 0, 1);
+  let acc = 0;
+  for (let i = 0; i < weights.length; i++) {
+    const frac = weights[i] / total;
+    acc += frac;
+    if (r <= acc) return i;
+  }
+  return weights.length - 1;
+}
+
 export function chapterAtTime(
   t: number,
   chapters: { start: number; end: number; title: string }[],

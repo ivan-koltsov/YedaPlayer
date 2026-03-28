@@ -12,37 +12,34 @@ body {
 
 body {
   font-family: Inter, system-ui, -apple-system, sans-serif;
-  background: #e6e6e6;
+  background: #e8eaed;
   color: #1a1a1a;
   -webkit-font-smoothing: antialiased;
 }
 
 #root {
   min-height: 100vh;
-  padding: 24px 24px 80px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  box-sizing: border-box;
 }
 
 .app-shell {
-  max-width: 1120px;
-  margin: 0 auto;
+  width: min(1120px, 60vw);
+  max-width: 100%;
+  position: relative;
 }
 
-.app-header {
-  margin-bottom: 20px;
-}
+@media (max-width: 640px) {
+  .app-shell {
+    width: 100%;
+  }
 
-.app-title {
-  margin: 0 0 6px;
-  font-size: 1.125rem;
-  font-weight: 600;
-  letter-spacing: -0.02em;
-  color: #2d2d2d;
-}
-
-.app-sub {
-  margin: 0;
-  font-size: 0.8125rem;
-  color: #6b6b6b;
+  #root {
+    padding: 16px;
+  }
 }
 
 .helpFab {
