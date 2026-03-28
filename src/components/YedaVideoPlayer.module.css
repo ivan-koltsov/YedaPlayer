@@ -30,12 +30,17 @@
 .inner {
   display: flex;
   flex-direction: column;
+  min-height: 0;
+  width: 100%;
 }
 
 .videoWrap {
   position: relative;
+  width: 100%;
   aspect-ratio: 16 / 9;
   background: #000;
+  overflow: hidden;
+  flex-shrink: 0;
 }
 
 /* Figma: bar fades in on hover; stay visible while paused */
@@ -53,7 +58,8 @@
   display: block;
   width: 100%;
   height: 100%;
-  object-fit: contain;
+  object-fit: cover;
+  object-position: center center;
   cursor: pointer;
 }
 
@@ -152,7 +158,7 @@
 }
 
 .segment.segmentHovered {
-  background: #2563eb !important;
+  background: #76a4f9 !important;
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.12);
 }
 
@@ -319,7 +325,7 @@
 }
 
 .timeReadout {
-  font-size: 12px;
+  font-size: 18px;
   font-weight: 500;
   font-variant-numeric: tabular-nums;
   color: #fff;
@@ -400,6 +406,39 @@
 .qualityOption.active {
   background: rgba(255, 255, 255, 0.14);
   font-weight: 600;
+}
+
+/* Fill viewport in fullscreen — avoids black band below player */
+.root:fullscreen,
+.root:-webkit-full-screen {
+  width: 100vw;
+  height: 100vh;
+  max-height: 100vh;
+  margin: 0;
+  border-radius: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+}
+
+.root:fullscreen .inner,
+.root:-webkit-full-screen .inner {
+  flex: 0 0 auto;
+  width: min(100vw, calc(100vh * 16 / 9));
+  max-width: 100vw;
+  max-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.root:fullscreen .videoWrap,
+.root:-webkit-full-screen .videoWrap {
+  width: 100%;
+  max-height: min(100vh, calc(100vw * 9 / 16));
+  aspect-ratio: 16 / 9;
 }
 
 @media (max-width: 560px) {
